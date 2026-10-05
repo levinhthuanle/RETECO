@@ -1,0 +1,5 @@
+sentence-transformers>=3.0
+faiss-cpu>=1.8
+pytrec_eval>=0.5
+tqdm>=4.0
+numpy>=1.24

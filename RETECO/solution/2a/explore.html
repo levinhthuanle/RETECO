@@ -1,0 +1,835 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RETECO Track 2a — Explorer</title>
+<style>
+/* ── reset & tokens ─────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:       #f8f9fa;
+  --surface:  #ffffff;
+  --surface2: #f1f3f5;
+  --border:   #dee2e6;
+  --border2:  #ced4da;
+  --ink:      #212529;
+  --ink2:     #495057;
+  --ink3:     #868e96;
+  --radius:   8px;
+  --shadow:   0 1px 4px rgba(0,0,0,.08), 0 2px 12px rgba(0,0,0,.06);
+
+  /* validated categorical palette: law · drones · biology · earth_science */
+  --c-law:    #3b5bdb;
+  --c-drones: #9c36b5;
+  --c-bio:    #0f9960;
+  --c-earth:  #c0392b;
+
+  /* turn depth colours (sequential, one hue) */
+  --t1: #d0ebff;  --t1i: #1864ab;
+  --t2: #a5d8ff;  --t2i: #1971c2;
+  --t3: #74c0fc;  --t3i: #1c7ed6;
+  --t4: #4dabf7;  --t4i: #1971c2;
+  --t5: #339af0;  --t5i: #fff;
+
+  --gold: #f59f00;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* ── layout ─────────────────────────────────────────────────── */
+.app { display: grid; grid-template-columns: 300px 1fr; min-height: 100vh; }
+
+/* sidebar */
+.sidebar {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.sidebar-header {
+  padding: 20px 16px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.sidebar-header h1 { font-size: 16px; font-weight: 700; color: var(--ink); }
+.sidebar-header p  { font-size: 12px; color: var(--ink3); margin-top: 2px; }
+
+.conv-list { flex: 1; overflow-y: auto; padding: 8px; }
+
+.conv-item {
+  border-radius: var(--radius);
+  border: 1.5px solid var(--border);
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.conv-item:hover  { background: var(--surface2); border-color: var(--border2); }
+.conv-item.active { background: #e7f5ff; border-color: #74c0fc; }
+
+.conv-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 20px;
+  margin-bottom: 5px;
+  color: #fff;
+  letter-spacing: .4px;
+  text-transform: uppercase;
+}
+.conv-item-id   { font-size: 11px; font-weight: 600; color: var(--ink2); }
+.conv-item-meta { font-size: 11px; color: var(--ink3); margin-top: 2px; }
+
+/* stats panel */
+.stats-bar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.stat-cell {
+  background: var(--surface);
+  padding: 12px 10px;
+  text-align: center;
+}
+.stat-val  { font-size: 22px; font-weight: 700; color: var(--ink); line-height: 1; }
+.stat-lbl  { font-size: 10px; color: var(--ink3); margin-top: 3px; text-transform: uppercase; letter-spacing: .5px; }
+
+/* main panel */
+.main { overflow-y: auto; }
+.main-inner { max-width: 860px; margin: 0 auto; padding: 24px 24px 60px; }
+
+/* section headings */
+.section-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--ink3);
+  margin: 28px 0 10px;
+}
+
+/* conversation card */
+.conv-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 20px;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow);
+}
+
+.conv-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.conv-card-head h2 { font-size: 15px; font-weight: 700; }
+
+.original-query {
+  font-size: 13px;
+  color: var(--ink2);
+  background: var(--surface2);
+  border-left: 3px solid var(--border2);
+  border-radius: 0 4px 4px 0;
+  padding: 8px 12px;
+  font-style: italic;
+  line-height: 1.55;
+}
+
+/* turn timeline */
+.timeline { display: flex; flex-direction: column; gap: 0; }
+
+.turn-row {
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  gap: 0;
+  position: relative;
+}
+
+/* vertical connector */
+.turn-row:not(:last-child) .turn-connector::after {
+  content: '';
+  display: block;
+  width: 2px;
+  background: var(--border);
+  position: absolute;
+  left: 17px;
+  top: 36px;
+  bottom: 0;
+}
+
+.turn-num {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  flex-shrink: 0;
+  margin-top: 4px;
+  position: relative;
+  z-index: 1;
+}
+
+.turn-body {
+  padding: 0 0 20px 12px;
+}
+
+.turn-query {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 6px;
+  line-height: 1.4;
+}
+
+.turn-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.tag {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+.tag-gold   { background: #fff9db; color: #7c4e00; border: 1px solid #ffe066; }
+.tag-hist   { background: #e3fafc; color: #0b6b7d; border: 1px solid #99e9f2; }
+.tag-qid    { background: var(--surface2); color: var(--ink3); border: 1px solid var(--border); font-family: monospace; font-size: 10px; }
+
+/* history accordion */
+.hist-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink3);
+  cursor: pointer;
+  user-select: none;
+  margin-bottom: 4px;
+  background: none;
+  border: none;
+  padding: 0;
+}
+.hist-toggle svg { transition: transform .2s; }
+.hist-toggle.open svg { transform: rotate(90deg); }
+
+.hist-content {
+  display: none;
+  font-size: 12px;
+  color: var(--ink2);
+  background: var(--surface2);
+  border-radius: 4px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  white-space: pre-wrap;
+  max-height: 200px;
+  overflow-y: auto;
+  line-height: 1.5;
+}
+.hist-content.open { display: block; }
+
+/* doc chips */
+.doc-list { display: flex; flex-wrap: wrap; gap: 5px; }
+
+.doc-chip {
+  font-size: 11px;
+  padding: 3px 9px;
+  border-radius: 4px;
+  border: 1.5px solid var(--border2);
+  background: var(--surface);
+  cursor: pointer;
+  transition: border-color .12s, background .12s;
+  color: var(--ink2);
+  font-family: monospace;
+}
+.doc-chip:hover { border-color: #74c0fc; background: #e7f5ff; color: var(--ink); }
+
+/* doc detail panel */
+.doc-panel {
+  display: none;
+  background: var(--surface);
+  border: 1.5px solid #74c0fc;
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-top: 10px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink2);
+  position: relative;
+}
+.doc-panel.open { display: block; }
+.doc-panel-id {
+  font-size: 10px;
+  font-family: monospace;
+  color: var(--ink3);
+  margin-bottom: 6px;
+}
+.doc-panel-close {
+  position: absolute;
+  top: 10px; right: 12px;
+  background: none; border: none;
+  font-size: 16px; color: var(--ink3);
+  cursor: pointer;
+  line-height: 1;
+}
+.doc-panel-close:hover { color: var(--ink); }
+
+/* baseline chart */
+.chart-wrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  box-shadow: var(--shadow);
+}
+.chart-title { font-size: 13px; font-weight: 700; color: var(--ink); margin-bottom: 4px; }
+.chart-sub   { font-size: 11px; color: var(--ink3); margin-bottom: 16px; }
+
+.bar-group { display: flex; flex-direction: column; gap: 10px; }
+.bar-row   { display: grid; grid-template-columns: 110px 1fr 48px; align-items: center; gap: 8px; }
+.bar-label { font-size: 12px; color: var(--ink2); text-align: right; white-space: nowrap; }
+.bar-track { height: 22px; background: var(--surface2); border-radius: 4px; overflow: hidden; position: relative; }
+.bar-fill  {
+  height: 100%;
+  border-radius: 4px;
+  transition: width .6s cubic-bezier(.4,0,.2,1);
+  display: flex;
+  align-items: center;
+  padding-left: 6px;
+}
+.bar-val { font-size: 11px; font-weight: 700; text-align: right; color: var(--ink2); font-variant-numeric: tabular-nums; }
+
+.bar-group-sep { height: 1px; background: var(--border); margin: 6px 0; }
+
+.legend-row { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 14px; }
+.legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink2); }
+.legend-dot  { width: 12px; height: 12px; border-radius: 2px; flex-shrink: 0; }
+
+/* turn-depth chart */
+.depth-grid { display: grid; grid-template-columns: repeat(5,1fr); gap: 8px; margin-top: 8px; }
+.depth-cell {
+  background: var(--surface2);
+  border-radius: 6px;
+  padding: 12px 8px;
+  text-align: center;
+  border: 1px solid var(--border);
+}
+.depth-cell-val { font-size: 20px; font-weight: 700; }
+.depth-cell-lbl { font-size: 11px; color: var(--ink3); margin-top: 2px; }
+
+/* tooltip */
+.tooltip {
+  position: fixed;
+  background: #212529;
+  color: #fff;
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .12s;
+  z-index: 1000;
+  max-width: 300px;
+  line-height: 1.4;
+}
+.tooltip.show { opacity: 1; }
+
+/* empty state */
+.empty {
+  text-align: center;
+  color: var(--ink3);
+  padding: 80px 20px;
+}
+.empty-icon { font-size: 40px; margin-bottom: 12px; }
+.empty h3   { font-size: 15px; color: var(--ink2); margin-bottom: 6px; }
+
+/* table view (accessibility) */
+.table-view {
+  display: none;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 12px;
+}
+.table-view.show { display: table; }
+.table-view th, .table-view td {
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+.table-view th { background: var(--surface2); font-weight: 600; }
+.toggle-table {
+  font-size: 11px;
+  color: var(--ink3);
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 4px 0;
+  text-decoration: underline;
+  margin-top: 8px;
+  display: block;
+}
+
+@media (max-width: 700px) {
+  .app { grid-template-columns: 1fr; }
+  .sidebar { position: static; height: auto; }
+  .stats-bar { grid-template-columns: repeat(2,1fr); }
+}
+</style>
+</head>
+<body data-palette="#3b5bdb,#9c36b5,#0f9960,#c0392b">
+
+<div class="app">
+
+<!-- ── Sidebar ─────────────────────────────────────────────── -->
+<aside class="sidebar">
+  <div class="sidebar-header">
+    <h1>RETECO Track 2a</h1>
+    <p>Conversational Retrieval · Sample Explorer</p>
+  </div>
+
+  <div class="stats-bar">
+    <div class="stat-cell">
+      <div class="stat-val" id="stat-convs">4</div>
+      <div class="stat-lbl">Conversations</div>
+    </div>
+    <div class="stat-cell">
+      <div class="stat-val" id="stat-turns">13</div>
+      <div class="stat-lbl">Turns</div>
+    </div>
+    <div class="stat-cell">
+      <div class="stat-val" id="stat-docs">15</div>
+      <div class="stat-lbl">Documents</div>
+    </div>
+    <div class="stat-cell">
+      <div class="stat-val" id="stat-domains">4</div>
+      <div class="stat-lbl">Domains</div>
+    </div>
+  </div>
+
+  <div class="conv-list" id="conv-list"></div>
+</aside>
+
+<!-- ── Main ───────────────────────────────────────────────── -->
+<main class="main">
+<div class="main-inner">
+
+<!-- default: overview charts -->
+<div id="view-overview">
+  <p class="section-label">Overview · BM25 Baseline (dev nDCG@10)</p>
+
+  <div class="chart-wrap">
+    <div class="chart-title">Track 2a: Turn-only vs. +History</div>
+    <div class="chart-sub">BM25 baseline macro-averaged nDCG@10 per domain — appending conversation history nearly triples scores on most domains.</div>
+    <div class="bar-group" id="baseline-chart"></div>
+    <div class="legend-row">
+      <div class="legend-item"><div class="legend-dot" style="background:#a5d8ff"></div>Turn only (2a Base)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#1c7ed6"></div>+History (2a Hist)</div>
+    </div>
+    <button class="toggle-table" onclick="toggleTable('tbl-baseline')">Show as table</button>
+    <table class="table-view" id="tbl-baseline">
+      <thead><tr><th>Domain</th><th>Base nDCG@10</th><th>+Hist nDCG@10</th><th>Lift</th></tr></thead>
+      <tbody id="tbl-baseline-body"></tbody>
+    </table>
+  </div>
+
+  <p class="section-label" style="margin-top:24px">Turn depth breakdown · Sample conversations</p>
+
+  <div class="chart-wrap">
+    <div class="chart-title">Gold documents per turn position</div>
+    <div class="chart-sub">Average number of gold documents the retriever must find at each turn depth (T1 = first turn, T4+ = later). Later turns share many gold docs with earlier turns.</div>
+    <div class="depth-grid" id="depth-chart"></div>
+  </div>
+
+  <p class="section-label" style="margin-top:24px">Domain distribution · Full dev set</p>
+  <div class="chart-wrap">
+    <div class="chart-title">Conversations per domain (dev split)</div>
+    <div class="chart-sub">11 domains from RECOR — 6 from BRIGHT, 5 from StackExchange. Each domain has its own full corpus (never split).</div>
+    <div class="bar-group" id="domain-chart"></div>
+  </div>
+</div>
+
+<!-- conversation detail view -->
+<div id="view-detail" style="display:none"></div>
+
+</div><!-- /.main-inner -->
+</main>
+</div><!-- /.app -->
+
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+/* ── DATA ──────────────────────────────────────────────────── */
+const DATA = {"convs": [{"id": "ex_111149", "metadata": {"created_at": "2025-12-22T07:09:37.494113", "gold_doc_count": 11, "method": "unified_bright_workflow", "num_turns": 3, "source": "annotated_data", "version": "unified_v1"}, "original_answer": "No The 1976 Act extended terms for works still under copyright from 28 + 28 years to life + 50 Years or 75 years for anonymous, pseudonymous, and works made for hire. But it did not 'resurrect' works where the copyright had already expired under the previous law.", "original_query": "Can copyright be claimed retroactively on works that went unregistered back when copyright had to be registered? As I understand it, copyright is automatic. Anyone who creates a work has copyright over it, whether they're a big movie studio, or an amateur writer writing short stories in their bedroom. Copyright doesn't have to be registered. But this wasn't always the way. Until recently, big famous works could be in the public domain due to oversights in the copyright registration process. The famous example being the movie \"It's a Wonderful Life\", which is a holiday classic, because it was so widely available, because it was in the public domain.", "task": "law", "turns": [{"answer": "Extending a copyright term just means making the copyright last longer for works that are still under copyright. Bringing a work back under copyright after it's already in the public domain is different: it actually takes something that was free for everyone to use and puts it back under copyright protection. In the US, this happened with certain foreign works under the Uruguay Round Agreements Act.", "conversation_history": "No previous conversation.", "gold_doc_ids": ["law_ex_111149_doc_2", "law_ex_111149_doc_0", "law_ex_111149_doc_3"], "query": "In copyright law, how is extending a copyright term different from bringing a work back under copyright after it's already in the public domain?", "turn_id": 1}, {"answer": "Yes, some works really did get their copyright back after already being in the public domain. This happened in the US with certain foreign works because of a law called the Uruguay Round Agreements Act. For example, things like Prokofiev's Peter and the Wolf were once free for anyone to use in the US, but then became copyrighted again.", "conversation_history": "Q: In copyright law, how is extending a copyright term different from bringing a work back under copyright after it's already in the public domain?\nA: Extending a copyright term just means making the copyright last longer for works that are still under copyright.", "gold_doc_ids": ["law_ex_111149_doc_1", "law_ex_111149_doc_2", "law_ex_111149_doc_0", "law_ex_111149_doc_3"], "query": "Wait, did any works actually get their copyright back after they'd already gone public domain?", "turn_id": 2}, {"answer": "For older movies that were made in the US and lost their copyright because they didn't follow the right rules, they stayed in the public domain—they didn't get their rights back. The law that restored copyright only applied to certain foreign works.", "conversation_history": "Q: In copyright law, how is extending a copyright term different from bringing a work back under copyright after it's already in the public domain?\nA: Extending a copyright term just means making the copyright last longer for works that are still under copyright.\nQ: Wait, did any works actually get their copyright back after they'd already gone public domain?\nA: Yes, some works really did get their copyright back.", "gold_doc_ids": ["law_ex_111149_doc_0", "law_ex_111149_doc_1", "law_ex_111149_doc_2", "law_ex_111149_doc_3"], "query": "Did those older movies that lost copyright before the law changed ever get their rights back, or were they just out for good?", "turn_id": 3}]}, {"id": "ex_3025", "metadata": {"created_at": "2025-12-22T02:26:52.066213", "gold_doc_count": 11, "method": "unified_bright_workflow", "num_turns": 4, "source": "annotated_data", "version": "unified_v1"}, "original_answer": "Motor construction varies greatly between designs. FPV drone motors operate in dusty environments. The bearings are lubricated, but exposed regions usually aren't — any lubricant there would foul quickly with dirt.", "original_query": "Why don't they use any lubricants in FPV drone motors?", "task": "drones", "turns": [{"answer": "Lubrication is only used inside the bearings because that's where the actual moving parts are, and those bearings are sealed with grease. Adding oil to exposed rotor parts attracts dust and dirt, which can get into the bearings and cause friction.", "conversation_history": "No previous conversation.", "gold_doc_ids": ["drones_ex_3025_doc_0", "drones_ex_3025_doc_1", "drones_ex_3025_doc_2"], "query": "In FPV drone motors, why is lubrication only used inside the bearings and not on the more exposed rotor parts?", "turn_id": 1}, {"answer": "Oil acts like a magnet for fine dust and sand. Once that stuff gets sucked into the bearings, the extra friction makes the motor run weaker, and the drone uses more battery to stay steady.", "conversation_history": "Q: In FPV drone motors, why is lubrication only used inside the bearings and not on the more exposed rotor parts?\nA: Lubrication is only used inside the bearings because that's where the actual moving parts are.", "gold_doc_ids": ["drones_ex_3025_doc_2", "drones_ex_3025_doc_0"], "query": "Is it really that easy for dirt to get in and mess things up if there's oil on those parts?", "turn_id": 2}, {"answer": "The factory grease inside the bearings is really important. That grease is designed to handle the heat and friction that builds up inside the bearing, which light oils can't do. If you mess with the factory grease, the bearings can end up running dry.", "conversation_history": "Q: In FPV drone motors, why is lubrication only used inside the bearings and not on the more exposed rotor parts?\nA: Lubrication is only used inside the bearings.\nQ: Is it really that easy for dirt to get in?\nA: Oil acts like a magnet for fine dust and sand.", "gold_doc_ids": ["drones_ex_3025_doc_1", "drones_ex_3025_doc_0"], "query": "Is that factory grease really that important for keeping the bearings from wearing out fast?", "turn_id": 3}, {"answer": "Most FPV drone motors use ball bearings that are shielded and already packed with grease, so adding oil outside just attracts dirt. But with tiny micro motors that use brass bushings, a bit of oil can help them run smoother since they have more friction.", "conversation_history": "Q: In FPV drone motors, why is lubrication only used inside the bearings?\nA: Lubrication is only used inside the bearings.\nQ: Is dirt a risk?\nA: Oil attracts fine dust.\nQ: Is factory grease important?\nA: Yes, factory grease handles heat and friction.", "gold_doc_ids": ["drones_ex_3025_doc_0", "drones_ex_3025_doc_1", "drones_ex_3025_doc_2", "drones_ex_3025_doc_3"], "query": "How much does the way these motors are built affect whether you can use lube on the outside parts?", "turn_id": 4}]}, {"id": "2", "metadata": {"created_at": "2025-12-22T02:40:01.949010", "gold_doc_count": 6, "method": "unified_bright_workflow", "num_turns": 3, "source": "bright", "version": "unified_v1"}, "original_answer": "There are about 100 to 400 functional olfactory receptors in humans. While the total tally exceeds 1000, more than half are inactive pseudogenes. Different receptors are sensitive to subsets of chemicals that define a tuning curve.", "original_query": "Is there an RGB equivalent for smells? Millions of colors can be generated by mixing red, green and blue. Is there a basic set of smells that can yield all detectable smells?", "task": "biology", "turns": [{"answer": "Having hundreds of different smell receptors makes it hard to have a simple set of primary smells like RGB. Each receptor detects a range of molecules, and most odors activate several types at once. Brains recognize smells from complex combinations of receptor activity.", "conversation_history": "No previous conversation.", "gold_doc_ids": ["RGB_equivalent_for_smells/Olfactory_receptor_3.txt", "RGB_equivalent_for_smells/Sense_of_smell_5.txt"], "query": "In smell perception, does having hundreds of smell receptors mean we can't have a simple set of primary smells like RGB colors?", "turn_id": 1}, {"answer": "Having inactive smell receptors (pseudogenes) means we probably can't detect some scents that other animals can. Humans have about 400 working smell receptor genes, but around 600 are non-functional.", "conversation_history": "Q: In smell perception, does having hundreds of smell receptors mean we can't have a simple set of primary smells like RGB colors?\nA: Having hundreds of different smell receptors makes it hard to have a simple primary set.", "gold_doc_ids": ["RGB_equivalent_for_smells/Olfactory_receptor_3.txt"], "query": "Oh, does having so many inactive smell receptors mean we're actually missing out on some scents?", "turn_id": 2}, {"answer": "People perceive smells differently. When scientists judge odor intensity, they use an odor panel of multiple people because each person's sense varies. This helps get a more accurate idea of how intense a smell really is.", "conversation_history": "Q: In smell perception, does having hundreds of smell receptors mean we can't have primary smells?\nA: Yes, it makes it hard.\nQ: Does having inactive receptors mean we miss scents?\nA: Yes, about 600 genes are non-functional.", "gold_doc_ids": ["RGB_equivalent_for_smells/Sense_of_smell_8.txt"], "query": "I wonder if everyone's nose picks up those 'primary smells' the same way, or does it vary a lot?", "turn_id": 3}]}, {"id": "5", "metadata": {"created_at": "2025-12-22T20:40:47.042348", "gold_doc_count": 7, "method": "unified_bright_workflow", "num_turns": 3, "source": "bright", "version": "unified_v1"}, "original_answer": "Humidity is not a proxy for rain. It does not start raining automatically when 100% humidity is reached. The onset of rain depends on many things including humidity, aerosols (CCN), and vertical lifting.", "original_query": "Does it immediately start to rain if humidity is >100%? If so, why do we have slight rain and heavy rain? If not, what is the limit?", "task": "earth_science", "turns": [{"answer": "Tiny droplets make it harder for condensation to start because their curved surfaces have higher vapor pressure. The air needs to be more humid than normal saturation before condensation can get going. Droplets form more easily if there's something to stick to, like dust particles (cloud condensation nuclei).", "conversation_history": "No previous conversation.", "gold_doc_ids": ["humidity_and_rain/Kelvin_equation5.txt", "humidity_and_rain/Kelvin_equation2.txt", "humidity_and_rain/Kelvin_equation4.txt", "humidity_and_rain/Kelvin_equation1.txt"], "query": "In weather and humidity, how do tiny droplets affect when condensation and rain actually start?", "turn_id": 1}, {"answer": "Having more particles in the air gives water vapor something to stick to, making it easier for droplets to form. Without particles, it would take much higher humidity for condensation to start, because tiny droplets on their own tend to evaporate quickly.", "conversation_history": "Q: In weather and humidity, how do tiny droplets affect when condensation and rain actually start?\nA: Tiny droplets make it harder for condensation to start because of their curved surfaces.", "gold_doc_ids": ["humidity_and_rain/Kelvin_equation5.txt"], "query": "Is that why having more particles in the air makes it easier for clouds to form?", "turn_id": 2}, {"answer": "The Kelvin equation explains that tiny droplets have higher vapor pressure because of curved surfaces, so it's harder for them to grow at first. But as droplets get bigger, their vapor pressure goes down, making it easier for more water to condense. Once enough droplets grow large enough, rain can begin.", "conversation_history": "Q: In weather and humidity, how do tiny droplets affect condensation?\nA: Tiny droplets make it harder.\nQ: Is that why more particles help clouds form?\nA: Yes, particles give water vapor something to stick to.", "gold_doc_ids": ["humidity_and_rain/Kelvin_equation1.txt"], "query": "Then what actually triggers rain instead of just making more clouds when the air gets that humid?", "turn_id": 3}]}], "docs": {"law_ex_111149_doc_2": "Title V of the URAA made several modifications to the Copyright law of the United States. It amended Title 17 (\"Copyrights\") of the United States Code to include a completely reworded article 104A on copyright restorations on foreign works and to include a new chapter 11, containing a prohibition of bootleg sound and video recordings of live performances.\n\nThe U.S. had joined the Berne Convention on March 1, 1989, when its Berne Convention Implementation Act of 1988 came into force. One of the conditions for joining the Berne Convention was that the U.S. adopt the moral rights protection required by Article 6bis of the convention.", "law_ex_111149_doc_0": "Legal traditions differ on whether a work in the public domain can have its copyright restored. In the European Union, the Copyright Duration Directive was applied retroactively, restoring and extending the terms of copyright on material previously in the public domain. Term extensions by the US and Australia generally have not removed works from the public domain, but rather delayed the addition of works to it. However, the United States moved away from that tradition with the Uruguay Round Agreements Act, which removed from the public domain many foreign-sourced works that had previously not been protected in the US due to failure to comply with formalities.", "law_ex_111149_doc_3": "Golan v. Holder, 565 U.S. 302 (2012), was a US Supreme Court case that dealt with copyright and the public domain. It held that the \"limited time\" language of the United States Constitution's Copyright Clause does not preclude the extension of copyright protections to works previously in the public domain. In particular, the case challenged the constitutionality of the application of Section 514 of the Uruguay Round Agreements Act of 1994, which implemented the provisions of trade agreements seeking to equalize copyright protection on an international basis.", "law_ex_111149_doc_1": "Sec. 2 - Declarations. The Congress makes the following declarations: (1) The Convention for the Protection of Literary and Artistic Works, signed at Berne, Switzerland, on September 9, 1886, and all acts, protocols, and revisions thereto (hereafter in this Act referred to as the \"Berne Convention\") are not self-executing under the Constitution and laws of the United States. (2) The obligations of the United States under the Berne Convention may be performed only pursuant to appropriate domestic law.", "drones_ex_3025_doc_0": "I thought we shouldn't lubricate brushless motors? It's true that we don't have to lubricate brushless motors with ball bearings. Ball bearings are sealed with grease inside, so applying oil doesn't really help much but actually could be counter-productive as well as making a mess because oil will attract dusts and dirt. That's a different story when it comes to micro motors such as 0603 and 0703, as they don't have ball bearings but brass bushings (sintered bearings), which creates way more friction than ball bearings.", "drones_ex_3025_doc_1": "A brushless motor used in RC is actually quite simple mechanically. There are only a few moving parts in the entire assembly. Those moving parts are limited to the rotor containing the permanent magnets and the bearings that support it. When considering lubrication, the only area that could possibly require it is the bearings. The typical bearings found in an RC motor have a shield that helps protect them from foreign object debris — dirt.", "drones_ex_3025_doc_2": "Do NOT use a normal oil. It will attract fine dust and sand. It is not visible to naked eye. Once it is sucked into the propeller bearings, it causes friction. You will notice the weaker propeller spinning compared to the rest. The drone will try to compensate by sending more power to the weaker propeller to ensure it is steady. This consumes a lot of battery.", "drones_ex_3025_doc_3": "The bearings are shielded — not sealed. The reality is the bearings will probably outlast the service life of the drone without any additional oiling. Don't use any magic lubricant in shielded bearings. The factory lube is sufficient for the service life.", "RGB_equivalent_for_smells/Olfactory_receptor_3.txt": "Diversity — There are a large number of different odor receptors, with as many as 1,000 in the mammalian genome which represents approximately 3% of the genes in the genome. However, not all of these potential odor receptor genes are expressed and functional. According to an analysis of data derived from the Human Genome Project, humans have approximately 400 functional genes coding for olfactory receptors, and the remaining 600 candidates are pseudogenes. The reason for the large number of different odor receptors is to provide a system for discriminating between as many different odors as possible.", "RGB_equivalent_for_smells/Sense_of_smell_5.txt": "Physiological basis in vertebrates — In humans and other vertebrates, smells are sensed by olfactory sensory neurons in the olfactory epithelium. The olfactory epithelium is made up of at least six morphologically and biochemically different cell types. The proportion of olfactory epithelium compared to respiratory epithelium gives an indication of the animal's olfactory sensitivity. Humans have about 10 cm² of olfactory epithelium, whereas some dogs have 170 cm².", "RGB_equivalent_for_smells/Sense_of_smell_8.txt": "Machine-based smelling — Scientists have devised methods for quantifying the intensity of odors, in particular for the purpose of analyzing unpleasant odors released by an industrial source into a community. Since the 1800s industrial countries have encountered incidents where proximity of an industrial source produced adverse reactions among nearby residents. The basic theory of odor analysis is to measure what extent of dilution with pure air is required before the sample is rendered indistinguishable. Because single-person tests are unreliable, an odor panel of multiple people is typically used.", "humidity_and_rain/Kelvin_equation5.txt": "Apparent paradox — An equation similar to that of Kelvin can be derived for the solubility of small particles or droplets in a liquid. The Kelvin equation also applies to solids and slightly soluble liquids if the partial pressure p is replaced by the solubility of the solid at the given radius r, and p_sat by the solubility at a flat interface.", "humidity_and_rain/Kelvin_equation2.txt": "Formulation — The original form of the Kelvin equation, published in 1871: p(r₁, r₂) = P − γ·ρ_vapor / (ρ_liquid − ρ_vapor) · (1/r₁ + 1/r₂), where p(r) = vapor pressure at a curved interface of radius r, P = vapor pressure at flat interface, γ = surface tension, ρ = density.", "humidity_and_rain/Kelvin_equation4.txt": "Derivation using the Gibbs free energy — The formal definition of the Gibbs free energy for a parcel of volume V, pressure P and temperature T is: G = U + pV − TS, where U is the internal energy and S is the entropy. The differential form: dG = −SdT + VdP + Σ μᵢ dnᵢ.", "humidity_and_rain/Kelvin_equation1.txt": "The Kelvin equation describes the change in vapour pressure due to a curved liquid–vapor interface, such as the surface of a droplet. The vapor pressure at a convex curved surface is higher than that at a flat surface. The Kelvin equation is dependent upon thermodynamic principles and does not allude to special properties of materials. It is also used for determination of pore size distribution of a porous medium using adsorption porosimetry."}};
+
+/* ── BASELINE DATA ─────────────────────────────────────────── */
+const BASELINE = [
+  { domain:'biology',          base:0.2034, hist:0.6065 },
+  { domain:'drones',           base:0.1695, hist:0.2954 },
+  { domain:'earth_science',    base:0.2195, hist:0.6264 },
+  { domain:'economics',        base:0.1629, hist:0.4739 },
+  { domain:'hardware',         base:0.1605, hist:0.3378 },
+  { domain:'law',              base:0.1147, hist:0.3437 },
+  { domain:'medicalsciences',  base:0.1168, hist:0.1730 },
+  { domain:'politics',         base:0.1514, hist:0.3219 },
+  { domain:'psychology',       base:0.2596, hist:0.5726 },
+  { domain:'robotics',         base:0.1574, hist:0.5123 },
+  { domain:'sustainable_living',base:0.2938,hist:0.5531 },
+];
+
+const DEV_CONVS = [
+  { domain:'biology',          n:25 },
+  { domain:'drones',           n:11 },
+  { domain:'earth_science',    n:29 },
+  { domain:'economics',        n:22 },
+  { domain:'hardware',         n:14 },
+  { domain:'law',              n:15 },
+  { domain:'medicalsciences',  n:13 },
+  { domain:'politics',         n:13 },
+  { domain:'psychology',       n:25 },
+  { domain:'robotics',         n:20 },
+  { domain:'sustainable_living',n:24 },
+];
+
+const DOMAIN_COLOR = {
+  law:'var(--c-law)', drones:'var(--c-drones)', biology:'var(--c-bio)', earth_science:'var(--c-earth)',
+  economics:'#e67e22', hardware:'#1098ad', psychology:'#5c7cfa', robotics:'#f03e3e',
+  politics:'#2f9e44', medicalsciences:'#c2255c', sustainable_living:'#0ca678'
+};
+
+function domainColor(d) { return DOMAIN_COLOR[d] || '#868e96'; }
+
+/* ── TURN DEPTH ──────────────────────────────────────────────  */
+const TURN_COLORS = ['#a5d8ff','#74c0fc','#4dabf7','#339af0','#1c7ed6'];
+const TURN_INK    = ['#1864ab','#1864ab','#1864ab','#fff','#fff'];
+
+/* ── STATE ───────────────────────────────────────────────────── */
+let activeConvId = null;
+let activeDocId  = null;
+
+/* ── INIT ─────────────────────────────────────────────────────── */
+document.addEventListener('DOMContentLoaded', () => {
+  renderSidebar();
+  renderBaselineChart();
+  renderDepthChart();
+  renderDomainChart();
+});
+
+/* ── SIDEBAR ──────────────────────────────────────────────────── */
+function renderSidebar() {
+  const list = document.getElementById('conv-list');
+  list.innerHTML = '';
+  DATA.convs.forEach(c => {
+    const el = document.createElement('div');
+    el.className = 'conv-item';
+    el.dataset.id = c.id;
+    const col = domainColor(c.task);
+    el.innerHTML = `
+      <div class="conv-badge" style="background:${col}">${c.task}</div>
+      <div class="conv-item-id">${c.id}</div>
+      <div class="conv-item-meta">${c.metadata.num_turns} turns · ${c.metadata.gold_doc_count} gold docs</div>
+    `;
+    el.addEventListener('click', () => selectConv(c.id));
+    list.appendChild(el);
+  });
+}
+
+/* ── SELECT CONVERSATION ─────────────────────────────────────── */
+function selectConv(id) {
+  activeConvId = id;
+  activeDocId  = null;
+
+  document.querySelectorAll('.conv-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.id === id);
+  });
+
+  document.getElementById('view-overview').style.display = 'none';
+  const detail = document.getElementById('view-detail');
+  detail.style.display = 'block';
+
+  const conv = DATA.convs.find(c => c.id === id);
+  renderDetail(conv, detail);
+}
+
+/* ── DETAIL VIEW ─────────────────────────────────────────────── */
+function renderDetail(conv, container) {
+  const col = domainColor(conv.task);
+
+  container.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+      <button onclick="showOverview()" style="background:none;border:none;color:var(--ink3);cursor:pointer;font-size:12px;padding:0">← Overview</button>
+    </div>
+
+    <p class="section-label">Conversation</p>
+    <div class="conv-card">
+      <div class="conv-card-head">
+        <span class="conv-badge" style="background:${col}">${conv.task}</span>
+        <h2>${conv.id}</h2>
+        <span style="font-size:12px;color:var(--ink3);margin-left:auto">${conv.metadata.num_turns} turns · ${conv.metadata.gold_doc_count} gold docs</span>
+      </div>
+      <div style="font-size:11px;color:var(--ink3);margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">Original question</div>
+      <div class="original-query">${esc(conv.original_query)}</div>
+    </div>
+
+    <p class="section-label">Turn timeline</p>
+    <div class="timeline" id="timeline-${conv.id}">
+      ${conv.turns.map(t => renderTurn(conv, t, col)).join('')}
+    </div>
+
+    <p class="section-label" style="margin-top:28px">Gold document pool</p>
+    <div class="conv-card">
+      <div style="font-size:12px;color:var(--ink2);margin-bottom:10px">
+        All unique documents referenced across any turn — click to read.
+      </div>
+      <div class="doc-list">
+        ${allGoldDocs(conv).map(docId => `
+          <div class="doc-chip" onclick="toggleDoc('pool-${docId.replace(/\//g,'_')}')"
+               title="${docId}">${shortDocId(docId)}</div>
+        `).join('')}
+      </div>
+      ${allGoldDocs(conv).map(docId => `
+        <div class="doc-panel" id="pool-${docId.replace(/\//g,'_')}">
+          <button class="doc-panel-close" onclick="closeDoc('pool-${docId.replace(/\//g,'_')}')">×</button>
+          <div class="doc-panel-id">${docId}</div>
+          <div>${esc(DATA.docs[docId] || 'Document not in sample.')}</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderTurn(conv, t, col) {
+  const turnColors = ['#a5d8ff','#74c0fc','#4dabf7','#339af0','#1c7ed6'];
+  const turnInk   = ['#1864ab','#1864ab','#1864ab','#fff','#fff'];
+  const ti = Math.min(t.turn_id - 1, 4);
+  const bg  = turnColors[ti];
+  const ink = turnInk[ti];
+
+  const histEmpty = !t.conversation_history || t.conversation_history.toLowerCase().startsWith('no previous');
+  const qid = `${conv.id}_turn_${t.turn_id}`;
+
+  return `
+    <div class="turn-row">
+      <div class="turn-connector">
+        <div class="turn-num" style="background:${bg};color:${ink}">T${t.turn_id}</div>
+      </div>
+      <div class="turn-body">
+        <div class="turn-query">${esc(t.query)}</div>
+        <div class="turn-meta">
+          <span class="tag tag-qid">${qid}</span>
+          <span class="tag tag-gold">⭐ ${t.gold_doc_ids.length} gold doc${t.gold_doc_ids.length!==1?'s':''}</span>
+          ${!histEmpty ? `<span class="tag tag-hist">📜 Has history</span>` : ''}
+        </div>
+
+        ${!histEmpty ? `
+          <button class="hist-toggle" id="ht-${conv.id}-${t.turn_id}" onclick="toggleHist('${conv.id}','${t.turn_id}')">
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+              <path d="M3 1.5L7 5L3 8.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+            Conversation history
+          </button>
+          <div class="hist-content" id="hc-${conv.id}-${t.turn_id}">${esc(t.conversation_history)}</div>
+        ` : '<div style="font-size:11px;color:var(--ink3);margin-bottom:6px">First turn — no history</div>'}
+
+        <div style="font-size:11px;color:var(--ink3);margin-bottom:5px">Gold documents for this turn:</div>
+        <div class="doc-list">
+          ${t.gold_doc_ids.map(docId => `
+            <div class="doc-chip" onclick="toggleDoc('t${t.turn_id}-${docId.replace(/\//g,'_')}')"
+                 title="${docId}">${shortDocId(docId)}</div>
+          `).join('')}
+        </div>
+        ${t.gold_doc_ids.map(docId => `
+          <div class="doc-panel" id="t${t.turn_id}-${docId.replace(/\//g,'_')}">
+            <button class="doc-panel-close" onclick="closeDoc('t${t.turn_id}-${docId.replace(/\//g,'_')}')">×</button>
+            <div class="doc-panel-id">${docId}</div>
+            <div>${esc(DATA.docs[docId] || 'Document not in sample.')}</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function allGoldDocs(conv) {
+  const seen = new Set();
+  const out  = [];
+  conv.turns.forEach(t => t.gold_doc_ids.forEach(d => { if (!seen.has(d)) { seen.add(d); out.push(d); } }));
+  return out;
+}
+
+function shortDocId(id) {
+  const parts = id.split('/');
+  const last  = parts[parts.length-1];
+  return last.length > 22 ? last.slice(0,20)+'…' : last;
+}
+
+/* ── INTERACTIONS ─────────────────────────────────────────────── */
+function showOverview() {
+  activeConvId = null;
+  document.querySelectorAll('.conv-item').forEach(el => el.classList.remove('active'));
+  document.getElementById('view-overview').style.display = 'block';
+  document.getElementById('view-detail').style.display   = 'none';
+}
+
+function toggleHist(convId, turnId) {
+  const btn = document.getElementById(`ht-${convId}-${turnId}`);
+  const box = document.getElementById(`hc-${convId}-${turnId}`);
+  btn.classList.toggle('open');
+  box.classList.toggle('open');
+}
+
+function toggleDoc(panelId) {
+  const panel = document.getElementById(panelId);
+  if (!panel) return;
+  // close any other open panels in the same turn-body
+  const parent = panel.parentElement;
+  parent.querySelectorAll('.doc-panel.open').forEach(p => { if (p !== panel) p.classList.remove('open'); });
+  panel.classList.toggle('open');
+  if (panel.classList.contains('open')) panel.scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+
+function closeDoc(panelId) {
+  const panel = document.getElementById(panelId);
+  if (panel) panel.classList.remove('open');
+}
+
+function toggleTable(id) {
+  const tbl = document.getElementById(id);
+  tbl.classList.toggle('show');
+}
+
+/* ── CHARTS ───────────────────────────────────────────────────── */
+function renderBaselineChart() {
+  const container = document.getElementById('baseline-chart');
+  const tbody     = document.getElementById('tbl-baseline-body');
+  const maxVal    = 0.65;
+
+  BASELINE.forEach(row => {
+    const pct_base = (row.base / maxVal * 100).toFixed(1);
+    const pct_hist = (row.hist / maxVal * 100).toFixed(1);
+
+    container.insertAdjacentHTML('beforeend', `
+      <div class="bar-row">
+        <span class="bar-label">${row.domain.replace('_',' ')}</span>
+        <div style="display:flex;flex-direction:column;gap:3px;width:100%">
+          <div class="bar-track">
+            <div class="bar-fill" style="width:${pct_base}%;background:#a5d8ff"></div>
+          </div>
+          <div class="bar-track">
+            <div class="bar-fill" style="width:${pct_hist}%;background:#1c7ed6"></div>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:3px">
+          <span class="bar-val">${row.base.toFixed(3)}</span>
+          <span class="bar-val" style="color:#1c7ed6;font-weight:700">${row.hist.toFixed(3)}</span>
+        </div>
+      </div>
+    `);
+
+    const lift = ((row.hist - row.base) / row.base * 100).toFixed(0);
+    tbody.insertAdjacentHTML('beforeend', `
+      <tr>
+        <td>${row.domain}</td>
+        <td>${row.base.toFixed(4)}</td>
+        <td>${row.hist.toFixed(4)}</td>
+        <td>+${lift}%</td>
+      </tr>
+    `);
+  });
+}
+
+function renderDepthChart() {
+  // compute gold doc counts per turn depth from sample
+  const byDepth = {};
+  DATA.convs.forEach(c => {
+    c.turns.forEach(t => {
+      const d = `T${t.turn_id}`;
+      if (!byDepth[d]) byDepth[d] = [];
+      byDepth[d].push(t.gold_doc_ids.length);
+    });
+  });
+
+  const container = document.getElementById('depth-chart');
+  ['T1','T2','T3','T4'].forEach((d, i) => {
+    const vals = byDepth[d] || [];
+    const avg  = vals.length ? (vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1) : '–';
+    container.insertAdjacentHTML('beforeend', `
+      <div class="depth-cell">
+        <div class="depth-cell-val" style="color:${TURN_COLORS[i+1]};-webkit-text-stroke:1px #495057">${avg}</div>
+        <div class="depth-cell-lbl">${d} · ${vals.length} turn${vals.length!==1?'s':''}</div>
+      </div>
+    `);
+  });
+}
+
+function renderDomainChart() {
+  const container = document.getElementById('domain-chart');
+  const maxN = Math.max(...DEV_CONVS.map(d => d.n));
+
+  DEV_CONVS.forEach(row => {
+    const pct = (row.n / maxN * 100).toFixed(1);
+    const col = domainColor(row.domain);
+    container.insertAdjacentHTML('beforeend', `
+      <div class="bar-row">
+        <span class="bar-label">${row.domain.replace('_',' ')}</span>
+        <div class="bar-track">
+          <div class="bar-fill" style="width:${pct}%;background:${col};opacity:.85"></div>
+        </div>
+        <span class="bar-val">${row.n}</span>
+      </div>
+    `);
+  });
+}
+
+/* ── TOOLTIP ──────────────────────────────────────────────────── */
+const tip = document.getElementById('tooltip');
+document.addEventListener('mouseover', e => {
+  const el = e.target.closest('[data-tip]');
+  if (!el) return;
+  tip.textContent = el.dataset.tip;
+  tip.classList.add('show');
+});
+document.addEventListener('mousemove', e => {
+  tip.style.left = (e.clientX + 14) + 'px';
+  tip.style.top  = (e.clientY - 6)  + 'px';
+});
+document.addEventListener('mouseout', e => {
+  if (!e.target.closest('[data-tip]')) tip.classList.remove('show');
+});
+
+/* ── UTILS ────────────────────────────────────────────────────── */
+function esc(s) {
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/\n/g,'<br>');
+}
+</script>
+</body>
+</html>
