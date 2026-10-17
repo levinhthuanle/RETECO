@@ -62,10 +62,10 @@ def build_queries_history(domain_dir: Path, split: str) -> dict[str, str]:
 
 
 def build_queries_rewritten(
-    domain_dir: Path, split: str, out_dir: Path, model: str
+    domain_dir: Path, split: str, out_dir: Path, model: str, strategy: str
 ) -> dict[str, str]:
     """LLM rewriting: decontextualized self-contained queries."""
-    return rewrite_domain_sync(domain_dir, split, out_dir, model=model)
+    return rewrite_domain_sync(domain_dir, split, out_dir, model=model, strategy=strategy)
 
 
 # ── scoring ─────────────────────────────────────────────────────────────────
@@ -114,7 +114,9 @@ def main():
     ap.add_argument("--splits",  nargs="+", default=["dev"])
     ap.add_argument("--domains", nargs="*", default=None)
     ap.add_argument("--model",   default="gpt-4o-mini",
-                    help="OpenAI model for rewriting (default: gpt-4o-mini)")
+                    help="LLM model for rewriting (default: gpt-4o-mini)")
+    ap.add_argument("--strategy", default="hr", choices=["qr", "hr"],
+                    help="Query strategy: qr=QueryRewrite, hr=History+Reasoning (default: hr)")
     ap.add_argument("--no-rewrite", action="store_true",
                     help="Use raw query+history instead of LLM rewriting")
     ap.add_argument("--top-k",   type=int, default=100)
@@ -125,7 +127,7 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
 
     domains = args.domains or TRACK2_DOMAINS
-    tag = "bm25_hist" if args.no_rewrite else f"bm25_rewrite_{args.model}"
+    tag = "bm25_hist" if args.no_rewrite else f"bm25_{args.strategy}_{args.model}"
 
     all_results: dict[str, dict] = defaultdict(dict)
 
@@ -152,8 +154,8 @@ def main():
             if args.no_rewrite:
                 queries = build_queries_history(domain_dir, split)
             else:
-                print(f"  [{split}] rewriting queries with {args.model}...", flush=True)
-                queries = build_queries_rewritten(domain_dir, split, out_dir, args.model)
+                print(f"  [{split}] rewriting queries ({args.strategy}) with {args.model}...", flush=True)
+                queries = build_queries_rewritten(domain_dir, split, out_dir, args.model, args.strategy)
 
             queries = {q: v for q, v in queries.items() if q in qrels}
 

@@ -1,33 +1,39 @@
 #!/usr/bin/env python3
 """
-run_2a.py — RETECO Track 2a · Option B: Dense retrieval (e5-base-v2).
+run_2a.py — RETECO Track 2a · Option B: Dense retrieval.
 
-Three query modes (--strategy):
-  rewrite   LLM-rewritten query from optionA cache (default)
+Models:
+  intfloat/e5-base-v2             (default, 109M)
+  AQ-MedAI/Diver-Retriever-4B-1020  (4B, BRIGHT SOTA retriever)
+  reasonir/ReasonIR-8B            (8B, Meta AI reasoning retriever)
+
+Query strategies (--query-strategy):
+  current   current turn only
   history   raw query + conversation history concatenated
-  current   current turn only (weakest baseline)
+  qr        LLM QueryRewrite from optionA cache
+  hr        LLM History+Reasoning from optionA cache (best per RECOR paper)
 
 Usage:
-    # Full dev, rewritten queries:
-    python run_2a.py --data ../../../../reteco_data --splits dev
+    # DIVER + H+R (Phase 3 target):
+    python run_2a.py --data ../../../../reteco_data --splits dev \\
+        --model AQ-MedAI/Diver-Retriever-4B-1020 --query-strategy hr
 
-    # Single domain smoke test:
-    python run_2a.py --data ../../../../reteco_data --splits dev --domains drones
+    # e5-base-v2 + history (old default):
+    python run_2a.py --data ../../../../reteco_data --splits dev \\
+        --model intfloat/e5-base-v2 --query-strategy history
 
-    # Use history concat instead of rewrite:
-    python run_2a.py --data ../../../../reteco_data --splits dev --strategy history
+    # Smoke test single domain:
+    python run_2a.py --data ../../../../reteco_data --splits dev \\
+        --domains drones --model AQ-MedAI/Diver-Retriever-4B-1020 --query-strategy hr
 
 Results:
-    output/runs/run_dense_<strategy>_<domain>_<split>.trec
+    output/runs/run_<model_slug>_<query_strategy>_<domain>_<split>.trec
     output/results/summary.json
-
-Requires:
-    pip install -r requirements.txt
-    optionA rewrites already in ../optionA/output/rewrites/ (for --strategy rewrite)
 """
 
 import argparse
 import json
+import re
 from collections import defaultdict
 from pathlib import Path
 
@@ -72,32 +78,44 @@ def build_queries_history(domain_dir: Path, split: str) -> dict[str, str]:
     return out
 
 
-def build_queries_rewrite(domain_dir: Path, split: str) -> dict[str, str]:
-    """Load LLM rewrites cached by optionA."""
-    cache_dir = OPTIONA_REWRITES / domain_dir.name / split
+def _load_rewrite_cache(domain_dir: Path, split: str, strategy: str) -> dict[str, str]:
+    """Load LLM rewrites cached by optionA (strategy = 'qr' or 'hr')."""
+    cache_dir = OPTIONA_REWRITES / strategy / domain_dir.name / split
     if not cache_dir.exists():
-        print(f"  [WARN] no rewrite cache at {cache_dir}, falling back to history")
-        return build_queries_history(domain_dir, split)
+        # Try old-style path (pre-strategy subdirectory, only qr existed)
+        legacy_dir = OPTIONA_REWRITES / domain_dir.name / split
+        if legacy_dir.exists() and strategy == "qr":
+            cache_dir = legacy_dir
+        else:
+            return {}
 
     bench = json.loads((domain_dir / f"benchmark_{split}.json").read_text())
     out = {}
     for conv in bench:
         for turn in conv["turns"]:
             qid = f"{conv['id']}_turn_{turn['turn_id']}"
-            safe = qid.replace("/", "_").replace(" ", "_")
-            # rewriter uses re.sub(r"[^\w\-]", "_", qid)
-            import re
             fname = re.sub(r"[^\w\-]", "_", qid) + ".txt"
             cache_file = cache_dir / fname
             if cache_file.exists():
                 out[qid] = cache_file.read_text(encoding="utf-8").strip()
-            else:
-                # fallback: history
-                hist = turn.get("conversation_history", "")
-                if hist.lower().startswith("no previous"):
-                    hist = ""
-                out[qid] = (turn["query"] + "\n\nConversation History:\n" + hist).strip() if hist else turn["query"]
     return out
+
+
+def build_queries_rewrite(domain_dir: Path, split: str, strategy: str) -> dict[str, str]:
+    """Load LLM rewrites; fall back to history for missing turns."""
+    cached = _load_rewrite_cache(domain_dir, split, strategy)
+    if not cached:
+        print(f"  [WARN] no {strategy} cache for {domain_dir.name}/{split}, falling back to history")
+        return build_queries_history(domain_dir, split)
+
+    # Fill any missing qids with history fallback
+    hist_queries = build_queries_history(domain_dir, split)
+    missing = [qid for qid in hist_queries if qid not in cached]
+    if missing:
+        print(f"  [WARN] {len(missing)} turns missing from {strategy} cache, using history fallback")
+    for qid in missing:
+        cached[qid] = hist_queries[qid]
+    return cached
 
 
 # ── scoring ────────────────────────────────────────────────────────────────
@@ -147,14 +165,18 @@ def write_run(run: dict, path: Path, tag: str) -> None:
 def main():
     ap = argparse.ArgumentParser()
     here = Path(__file__).parent
-    ap.add_argument("--data",     default=str(here / ".." / ".." / ".." / ".." / "reteco_data"))
-    ap.add_argument("--out",      default=str(here / "output"))
-    ap.add_argument("--splits",   nargs="+", default=["dev"])
-    ap.add_argument("--domains",  nargs="*", default=None)
-    ap.add_argument("--strategy", choices=["rewrite", "history", "current"], default="rewrite")
-    ap.add_argument("--model",    default="intfloat/e5-base-v2")
-    ap.add_argument("--top-k",    type=int, default=100)
-    ap.add_argument("--batch",    type=int, default=256)
+    ap.add_argument("--data",           default=str(here / ".." / ".." / ".." / ".." / "reteco_data"))
+    ap.add_argument("--out",            default=str(here / "output"))
+    ap.add_argument("--splits",         nargs="+", default=["dev"])
+    ap.add_argument("--domains",        nargs="*", default=None)
+    ap.add_argument("--model",          default="intfloat/e5-base-v2",
+                    help="Embedding model (e.g. AQ-MedAI/Diver-Retriever-4B-1020)")
+    ap.add_argument("--query-strategy", default="hr",
+                    choices=["current", "history", "qr", "hr"],
+                    help="Query strategy: current/history/qr/hr (default: hr)")
+    ap.add_argument("--top-k",          type=int, default=100)
+    ap.add_argument("--batch",          type=int, default=32,
+                    help="Encoding batch size (use 32 for 4B+ models, 256 for small models)")
     args = ap.parse_args()
 
     data_dir = Path(args.data).resolve()
@@ -162,7 +184,8 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
 
     domains = args.domains or TRACK2_DOMAINS
-    tag = f"dense_{args.strategy}_{args.model.split('/')[-1]}"
+    model_slug = re.sub(r"[^\w\-]", "_", args.model.split("/")[-1])
+    tag = f"dense_{model_slug}_{args.query_strategy}"
 
     # preload model once before any domain loop to avoid MPS re-init crash
     from embedder import _get_model
@@ -177,7 +200,7 @@ def main():
             continue
 
         print(f"\n=== {domain} ===")
-        index_cache = out_dir / "index" / domain
+        index_cache = out_dir / "index"
         index, doc_ids = build_index(
             domain_dir, index_cache,
             model_name=args.model,
@@ -191,16 +214,17 @@ def main():
             if not qrels:
                 continue
 
-            if args.strategy == "rewrite":
-                queries = build_queries_rewrite(domain_dir, split)
-            elif args.strategy == "history":
+            qs = args.query_strategy
+            if qs in ("qr", "hr"):
+                queries = build_queries_rewrite(domain_dir, split, qs)
+            elif qs == "history":
                 queries = build_queries_history(domain_dir, split)
             else:
                 queries = build_queries_current(domain_dir, split)
 
             queries = {q: v for q, v in queries.items() if q in qrels}
 
-            print(f"  [{split}] searching {len(queries)} queries...", flush=True)
+            print(f"  [{split}] searching {len(queries)} queries ({qs})...", flush=True)
             run = search(index, doc_ids, queries,
                          model_name=args.model, top_k=args.top_k, batch_size=args.batch)
 
